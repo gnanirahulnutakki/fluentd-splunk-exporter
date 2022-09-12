@@ -1,0 +1,81 @@
+version: "3.3"
+services:
+  fid-0:
+    image: radiantone/fid:${FID_VERSION}
+    hostname: "fid-0"
+    environment:
+      CLUSTER: "new" # new is default when not specified
+      ZK_CLUSTER: "${CLUSTER_NAME}"
+      LICENSE: "${LICENSE}"
+    ports:
+      - "7070:7070"
+      - "7171:7171"
+      - "2389:2389"
+      - "2636:2636"
+      - "8089:8089"
+      - "8090:8090"
+    volumes:
+      - fid-0:/opt/radiantone
+    networks:
+      fid-net:
+        aliases:
+          - fid-0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://fid-0:9100/ping"]
+      interval: 60s
+      timeout: 10s
+      retries: 10
+  fid-exporter:
+    build: .
+    #image: radiantone/fid-exporter
+    environment: 
+      - LDAP_URI=ldap://fid-0:2389
+      - BIND_DN=cn=Directory Manager
+      - BIND_PASSWORD=secret1234
+      - FLUENTD_ENABLE=true
+      - FLUENTD_CONF=/fluentd/etc/fluent.conf
+      - ELASTICSEARCH_HOST=elasticsearch
+    ports:
+      - "9095:9095"
+    depends_on:
+      fid-0:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      fid-net:
+        aliases:
+          - fid-exporter
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.5.0
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200"
+    networks:
+      fid-net:
+        aliases:
+          - elasticsearch
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 60s
+      timeout: 10s
+      retries: 10
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.5.0
+    ports:
+      - "5601:5601"
+    networks:
+      fid-net:
+        aliases:
+          - kibana
+networks:
+  fid-net:
+volumes:
+  fid-0:
